@@ -1,15 +1,15 @@
 CXX = mpic++
-CXXFLAGS = 
+CXXFLAGS = -std=c++14 -O3
 
 SRC = kdtree.cpp
-EXE = $(SRC:.cpp=.x)
+EXE = $(SRC:.cpp=)
 
 .PHONY:	default clean
 
 default:	$(EXE)
 
-%.x:	%.cpp
-	$(CXX) -o $@ $<
+%:	%.cpp
+	$(CXX) $(CXXFLAGS) -o $@ $<
 
 clean:
 	rm $(EXE)
