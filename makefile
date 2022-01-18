@@ -1,5 +1,5 @@
 CC = mpicc
-CFLAGS =
+CFLAGS = -DDOUBLE_PRECISION
 
 SRC = kdtree.c
 EXE = $(SRC:.c=)
