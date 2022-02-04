@@ -1,15 +1,21 @@
-CC = mpicc
-CFLAGS = -DDOUBLE_PRECISION
+CXX = g++-11
+CXXFLAGS = -std=c++14 -fopenmp 
+SRC = omp_kdtree.cpp
+EXE = $(SRC:.cpp=)
 
-SRC = kdtree.c
-EXE = $(SRC:.c=)
+PYC = python3
+PYSRC = test_data.py
+PYOUT = $(PYSRC:.py=.csv)
 
 .PHONY:	default clean
 
-default:	$(EXE)
+default:	$(PYOUT) $(EXE)
 
-%:	%.c
-	$(CC) $(CFLAGS) -o $@ $<
+%:	%.cpp
+	$(CXX) $(CXXFLAGS) -o $@ $<
+
+%.csv:	%.py
+	$(PYC) $< $@ 3 50
 
 clean:
 	rm $(EXE)
