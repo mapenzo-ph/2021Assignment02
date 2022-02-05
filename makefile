@@ -1,5 +1,5 @@
 CC = mpicc
-CFLAGS = -fopenmp
+CFLAGS = -fopenmp -DDOUBLE_PRECISION
 LDFLAGS = 
 
 SRC = kdtree.c
