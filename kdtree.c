@@ -9,18 +9,36 @@
 #endif
 
 // ========================================================
-//                  Set precision
+//                  Set precision 
 // ========================================================
 #ifndef DOUBLE_PRECISION
 #define float_t float
+#define MPI_FLOAT_T MPI_FLOAT
+#define FMT "%f"
+#define FMTLAST "%f\n"
+#define PFMT "%6.3f "
+#define PFMTLAST "%6.3f\n"
 #else
 #define float_t double
+#define MPI_FLOAT_T MPI_DOUBLE
+#define FMT "%lf"
+#define FMTLAST "%lf\n"
+#define PFMT "%6.3lf "
+#define PFMTLAST "%6.3lf\n"
 #endif
 
 // ========================================================
-//                  Struct definitions
+//          Struct definitions and global vars
 // ========================================================
+int mpi_size; // global, no need to pass as arg in functions
+int mpi_rank; 
 
+typedef struct node node;
+struct node {
+    int axis;
+    float_t *point;
+    node *left, *right;
+};
 
 // ========================================================
 //                  Helper functions
@@ -61,189 +79,184 @@ int countDims(FILE *fstream, char sep)
     return count;
 }
 
-char* getParserString(int dims, char sep)
+void getLocalParams(
+    char *filename, char sep, int *size, int *local_size, int *dims)
 {
     /* * * * * * * * * * * * * * * * * * * * * * * * *
-     * Composes appropriate string for parsing file
-     * and reading data
-     * * * * * * * * * * * * * * * * * * * * * * * * */
-
-#ifndef DOUBLE_PRECISION
-    // single precision parser
-    char *parser = (char*)malloc((3*dims+1)*sizeof(char));
-    char fmt[3] = "%f";
-    int nadd = 2;
-#else
-    // double precision parser
-    char *parser = (char*)malloc((4*dims+1)*sizeof(char));
-    char fmt[4] = "%lf";
-    int nadd = 3;
-#endif 
-
-    char sepstr[2] = {sep, '\0'};   // separator string
-    char newline[2] = {'\n', '\0'}; // newline string
-    for (int i = 0; i < dims-1; ++i)
-    {
-        // concatenating to create parser string
-        strncat(parser, fmt, nadd);
-        strncat(parser, sepstr, 1);
-    }
-    strncat(parser, fmt, nadd);
-    strncat(parser, newline, 1);
-    return parser;
-}
-
-void parse(char *filename, char sep, int mpi_size, int mpi_rank, int *size, int *dims)
-{
-    /* * * * * * * * * * * * * * * * * * * * * * * * *
-     * Parses input file and reads datapoints.
-     * @param char* string (in) -> input file path
-     * @param char sep     (in) -> data separator (in file)
-     * @param int* size   (out) -> address of size variable 
-     * @param int* dims   (out) -> address of dims variable
+     * Writes in @param size, @param int and 
+     * @param localSizes the corresponding values.
      * * * * * * * * * * * * * * * * * * * * * * * * */
 
     if (mpi_rank == 0)
     {
-        // handling input via root process
+        // read data from input file
         FILE *instream = fopen(filename, "r");
         if (instream == NULL)
         {
-             perror("Unable to open file. Aborting ...\n");
-             exit(1);
+            perror("Unable to open file. Exiting...\n");
+            exit(1);
         }
         *size = countLines(instream);
         *dims = countDims(instream, sep);
         fclose(instream);
     }
 
-        // broadcast size
-        MPI_Bcast(size, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    // communicate to other processes
+    MPI_Bcast(size, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Bcast(dims, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
-        // broadcast dims
-        MPI_Bcast(dims, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    // get local size in each process
+    int rest = *size % mpi_size;
+    *local_size = (mpi_rank < rest) ? *size / mpi_size + 1
+                                    : *size / mpi_size;
+}
 
+void parseLocalPoints(
+    FILE *fp, char sep, int npoints, int dims, float_t *buffer)
+{
+    /* * * * * * * * * * * * * * * * * * * * * * * * *
+     * Reads @param npoints from @param fp 
+     * into @param buffer.
+     * * * * * * * * * * * * * * * * * * * * * * * * */
+
+    char FMTSEP[] = FMT;
+    char sepstr[] = {sep, '\0'};
+    strncat(FMTSEP, sepstr, 1);
+    int r;
+    for (int np = 0; np < npoints; ++np)
+    {
+        for (int nc = 0; nc < dims - 1; ++nc)
+        {
+            r = fscanf(fp, FMTSEP, buffer + (np * dims) + nc);
+            if (r == EOF)
+            {
+                perror("Unexpected end of file while parsing. Exiting...");
+                exit(2);
+            }
+        }
+        r = fscanf(fp, FMTLAST, buffer + (np * dims) + dims - 1);
+        if (r == EOF)
+        {
+            perror("Unexpected end of file while parsing. Exiting...");
+            exit(3);
+        }
+    }
+}
+
+void parse(
+    char *filename, char sep, int local_size, int dims, float_t *data)
+{
+    /* * * * * * * * * * * * * * * * * * * * * * * * *
+     * Parses @param filename and distributes data 
+     * across all the mpi processes. 
+     * * * * * * * * * * * * * * * * * * * * * * * * */
+
+    MPI_Status status;
+
+    if (mpi_rank == 0)
+    {
+        FILE *fp = fopen(filename, "r");
+        if (fp == NULL)
+        {
+            perror("Failed to open input file. Exiting...");
+            exit(4);
+        }
+
+        // directly read points in process 0
+        parseLocalPoints(fp, sep, local_size, dims, data);
+
+        // read in send buffer and send to other processes
+        float_t send_buffer[local_size*dims];
+        int send_size;
+        for (int proc = 1; proc < mpi_size; ++proc)
+        {
+            // receive send size
+            MPI_Recv(
+                &send_size, 1, MPI_INT, proc, 
+                proc*10, MPI_COMM_WORLD, &status);
+
+            printf("to rank %d, size %d\n", proc, send_size);
+            parseLocalPoints(fp, sep, send_size, dims, send_buffer);
+            
+            // send to destination process
+            MPI_Send(
+                send_buffer, send_size*dims, MPI_FLOAT_T, proc, 
+                proc*10, MPI_COMM_WORLD);
+        }
+
+        fclose(fp);
+    }
+    else
+    {
+        MPI_Send(
+            &local_size, 1, MPI_INT, 0, 
+            mpi_rank*10, MPI_COMM_WORLD);
+
+        // receive local data
+        MPI_Recv(
+            data, local_size*dims, MPI_FLOAT_T, 0, 
+            mpi_rank*10, MPI_COMM_WORLD, &status);
+    }
 }
     
+void head(float_t *points, int len, int dims)
+{
+    /*************************************************
+    * Prints the first @param len entries in the 
+    * @param points buffer.
+    *************************************************/
 
+    // print point by point, coord by coord
+    for (size_t np = 0; np < len; ++np)
+    {
+        for (size_t nc = 0; nc < dims-1; ++nc)
+        {
+            printf(PFMT, points[np*dims+nc]); 
+        }
+        printf(PFMTLAST, points[np*dims+dims-1]);
+    }
+}
 
-
-
-// void print_head(kdpoint *points, size_t len)
-// {
-//     /*************************************************
-//     * Prints the first len entries of the dataset
-//     *
-//     * @param kdpoint *points: pointer to the dataset
-//     * @param size_t len: number of entries to be printed
-//     *************************************************/
-
-//     // build string to print datapoint
-// #ifndef DOUBLE_PRECISION
-//     char fmt[7] = {'%', '5', '.', '3', 'f', ' ', '\0'};
-//     char fmtlast[7] = {'%', '5', '.', '3', 'f', '\n', '\0'};
-// #else
-//     char fmt[8] = {'%', '5', '.', '3', 'l', 'f', ' ', '\0'};
-//     char fmtlast[8] = {'%', '5', '.', '3', 'l', 'f', '\n', '\0'};
-// #endif
-
-//     // print point by point, coord by coord
-//     for (size_t i=0; i<len; ++i)
-//     {
-//         for (size_t coord=0; coord<NDIM-1; ++coord)
-//         {
-//             printf(fmt, (points+i)->data[coord]); 
-//         }
-//         printf(fmtlast, (points+i)->data[NDIM-1]);
-//     }
-// }
-
-// void swap(float_t *a, float_t *b)
-// {
-//     /*
-//     * Swaps two values a and b
-//     */
-//     float_t tmp = *a;
-//     *a = *b;
-//     *b = tmp;
-// }
-
-// void swap_points(kdpoint *a, kdpoint *b)
-// {
-//     /*
-//     * Swaps two vectors acting coordinate by coordinate
-//     */
-//     for (size_t i=0; i<NDIM; ++i)
-//     {
-//        swap(a->data+i, b->data+i);
-//     }
-// }
-
-// void partition(kdpoint *start, size_t len, size_t p, size_t axis)
-// {
-//     /*
-//     * Sorts elements along the chosen dimension, with respect to 
-//     * a pivotal element 
-//     * 
-//     * @params kdpoint *points: array of points to be sorted
-//     * @params size_t len: lenght of the array
-//     * @params size_t p: coordinate of the pivot
-//     * @params size_t dim: dimension alog which to sort
-//     */
-
-//     if (p > len-1)
-//     {
-//         printf("Pivot must be inside the range of points. Aborting...\n");
-//         exit(-1);
-//     }
-
-//     if (len <= 1) return; // single point case
-    
-//     // take selected element as pivot and put in front
-//     float_t pivot = (start+p)->data[axis];
-//     printf("Pivot: %lf\n", pivot);
-
-//     kdpoint *left = start;
-//     kdpoint *right = start+len-1;
-    
-//     while (left <= right)
-//     {
-//         while (right->data[axis] > pivot && left<=right)
-//         {
-//             printf("Moving right\n");
-//             --right;
-//         }
-//         while (left->data[axis] < pivot && left <= right)
-//         {
-//             printf("Moving left\n");
-//             ++left;
-//         }
-//         if (left->data[axis] >= right->data[axis] && left <= right)
-//         {
-//             printf("Swapping\n");
-//             swap_points(left, right);
-//             --right;
-//             ++left;
-//         }
-//     }
-//     return;
-// }
 
 // ========================================================
 //                      Main program
 // ========================================================
 int main(int argc, char **argv)
 {
+    // init and get parameters
     MPI_Init(&argc, &argv);
-
-    int mpi_size, mpi_rank;
     MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
     MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
 
-    int size, dims;
-    parse("test_data.csv", ',', mpi_size, mpi_rank, &size, &dims);
+    int size, dims, local_size;
+    getLocalParams("test_data.csv", ',', &size, &local_size, &dims);
+    printf("My rank is %d, size is %d, dims is %d and my local size is %d\n",
+           mpi_rank, size, dims, local_size);
+    
+    MPI_Barrier(MPI_COMM_WORLD);
 
-    printf("My rank is %d, size is %d and dims are %d\n", mpi_rank, size, dims);
+    float_t *points = (float_t *)malloc(local_size * dims * sizeof(float_t));
+    
+    parse("test_data.csv", ',', local_size, dims, points);
+    if (mpi_rank == 0)
+    {
+        printf("Process %d\n", mpi_rank);
+        head(points, local_size, dims);
+    }
+    MPI_Barrier(MPI_COMM_WORLD);
+
+    if (mpi_rank == 1)
+    {
+        printf("Process %d\n", mpi_rank);
+        head(points, local_size, dims);
+    }
+    MPI_Barrier(MPI_COMM_WORLD);
+
+    if (mpi_rank == 2)
+    {
+        printf("Process %d\n", mpi_rank);
+        head(points, local_size, dims);
+    }
 
     MPI_Finalize();
     return 0;

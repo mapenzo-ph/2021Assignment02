@@ -4,13 +4,14 @@ LDFLAGS =
 
 SRC = kdtree.c
 EXE = $(SRC:.c=)
+OUT = $(SRC:.c=.out)
 
 .PHONY:	default clean
 
 default:	$(PYOUT) $(EXE)
 
-%:	%.cpp
+%:	%.c
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $<
 
 clean:
-	rm $(EXE)
+	rm $(EXE) $(OUT)

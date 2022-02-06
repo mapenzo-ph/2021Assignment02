@@ -1,0 +1,105 @@
+// void swap(float_t *a, float_t *b)
+// {
+//     /*
+//     * Swaps two values a and b
+//     */
+//     float_t tmp = *a;
+//     *a = *b;
+//     *b = tmp;
+// }
+
+// void swap_points(kdpoint *a, kdpoint *b)
+// {
+//     /*
+//     * Swaps two vectors acting coordinate by coordinate
+//     */
+//     for (size_t i=0; i<NDIM; ++i)
+//     {
+//        swap(a->data+i, b->data+i);
+//     }
+// }
+
+// void partition(kdpoint *start, size_t len, size_t p, size_t axis)
+// {
+//     /*
+//     * Sorts elements along the chosen dimension, with respect to 
+//     * a pivotal element 
+//     * 
+//     * @params kdpoint *points: array of points to be sorted
+//     * @params size_t len: lenght of the array
+//     * @params size_t p: coordinate of the pivot
+//     * @params size_t dim: dimension alog which to sort
+//     */
+
+//     if (p > len-1)
+//     {
+//         printf("Pivot must be inside the range of points. Aborting...\n");
+//         exit(-1);
+//     }
+
+//     if (len <= 1) return; // single point case
+    
+//     // take selected element as pivot and put in front
+//     float_t pivot = (start+p)->data[axis];
+//     printf("Pivot: %lf\n", pivot);
+
+//     kdpoint *left = start;
+//     kdpoint *right = start+len-1;
+    
+//     while (left <= right)
+//     {
+//         while (right->data[axis] > pivot && left<=right)
+//         {
+//             printf("Moving right\n");
+//             --right;
+//         }
+//         while (left->data[axis] < pivot && left <= right)
+//         {
+//             printf("Moving left\n");
+//             ++left;
+//         }
+//         if (left->data[axis] >= right->data[axis] && left <= right)
+//         {
+//             printf("Swapping\n");
+//             swap_points(left, right);
+//             --right;
+//             ++left;
+//         }
+//     }
+//     return;
+// }
+
+
+
+
+char* fmtString(int dims, char sep)
+{
+    /* * * * * * * * * * * * * * * * * * * * * * * * *
+     * Composes appropriate string for parsing file
+     * and reading data
+     * * * * * * * * * * * * * * * * * * * * * * * * */
+
+#ifndef DOUBLE_PRECISION
+    // single precision parser
+    char *fmtstr = (char*)malloc((3*dims+1)*sizeof(char));
+    char fmt[3] = "%f";
+    int nadd = 2;
+#else
+    // double precision parser
+    char *fmtstr = (char*)malloc((4*dims+1)*sizeof(char));
+    char fmt[4] = "%lf";
+    int nadd = 3;
+#endif 
+
+    char sepstr[2] = {sep, '\0'};   // separator string
+    char newline[2] = {'\n', '\0'}; // newline string
+    for (int i = 0; i < dims-1; ++i)
+    {
+        // concatenating to create parser string
+        strncat(fmtstr, fmt, nadd);
+        strncat(fmtstr, sepstr, 1);
+    }
+    strncat(fmtstr, fmt, nadd);
+    strncat(fmtstr, newline, 1);
+    return fmtstr;
+}
