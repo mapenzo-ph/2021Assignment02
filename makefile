@@ -1,8 +1,8 @@
-CC = mpicc
-CFLAGS = -fopenmp -DDOUBLE_PRECISION
+CC = cc
+CFLAGS = -fopenmp -std=c11 -DDOUBLE_PRECISION
 LDFLAGS = 
 
-SRC = kdtree.c
+SRC = omp_kdtree.c
 EXE = $(SRC:.c=)
 OUT = $(SRC:.c=.out)
 
