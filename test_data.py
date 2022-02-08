@@ -2,7 +2,7 @@
 This script generates test data for the kdtree.
 To run the script use:
 
-$ python3 test_data.py <d> <N>
+$ python3 test_data.py <filename> <d> <N>
 
 where <N> is the length of the dataset, and <d> the 
 dimensionality of the data.

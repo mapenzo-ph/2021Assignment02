@@ -8,9 +8,9 @@
 #include <omp.h>
 #endif
 
-// ========================================================
-//                  Set precision 
-// ========================================================
+// ==================================================================
+//                          Set precision
+// ==================================================================
 #ifndef DOUBLE_PRECISION
 #define float_t float
 #define MPI_FLOAT_T MPI_FLOAT
@@ -27,109 +27,183 @@
 #define PFMTLAST "%6.3lf\n"
 #endif
 
-// ========================================================
-//          Struct definitions and global vars
-// ========================================================
-int mpi_size; // global, no need to pass as arg in functions
-int mpi_rank; 
+// ==================================================================
+//              Global vars and struct definitions
+// ==================================================================
+#define INFILE "test_data.csv"
+#define NPTS 50
+#define NDIM 3
+#define SEP ','
 
-typedef struct node node;
-struct node {
+int omp_size;
+int omp_rank;
+
+typedef struct kdnode kdnode_t;
+struct kdnode
+{
     int axis;
-    float_t *point;
-    node *left, *right;
+    float_t split[NDIM];
+    int left, right;
 };
 
-// ========================================================
-//                  Helper functions
-// ========================================================
-int countLines(FILE *fstream)
-{
-    /*************************************************
-    * Counts number of lines in file stream.
-    *************************************************/
+// ==================================================================
+//                          Helper functions
+// ==================================================================
 
-    if (fstream == NULL) return 0;
-    
-    int count = 0;
-    for (char r; fscanf(fstream, "%c", &r) == 1; )
-    {
-        if (r == '\n') ++count;
-    }
-    rewind(fstream); // turn back to the top of file
-    return count;
-}
-
-int countDims(FILE *fstream, char sep)
+kdnode_t *parseInputFile()
 {
     /* * * * * * * * * * * * * * * * * * * * * * * * *
-     * Counts data entries on one line of file, assuming
-     * data separator is @param sep.
+     * Parses input file and stores points into an 
+     * array. Returns the array.
      * * * * * * * * * * * * * * * * * * * * * * * * */
 
-    if (fstream == NULL) return 0;
-    
-    int count = 1; // dims are 1 + num of separators
-    for (char r; fscanf(fstream, "%c", &r) == 1; )
+    // allocate nodes
+    kdnode_t *tree = (kdnode_t*)malloc(NPTS*sizeof(kdnode_t));
+
+    // open input file
+    FILE *fp = fopen(INFILE, "r");
+    if (fp == NULL)
     {
-        if (r == sep) ++count;
-        if (r == '\n') break;
+        perror("Unable to open input file! Exiting...\n");
+        exit(1);
     }
-    rewind(fstream); // turn back to the top of file
-    return count;
-}
 
-float_t *parse(char *filename, char sep, char size, char dims)
-{
-    /* * * * * * * * * * * * * * * * * * * * * * * * *
-     * Parses @param filename, and reads datapoints
-     * using @param sep as data separator.
-     * * * * * * * * * * * * * * * * * * * * * * * * */
-
-    float_t *buffer = (float_t *)malloc(size * dims * sizeof(float_t));
-    FILE *fp = fopen(filename, "r");
+    // set format for reading
     char FMTSEP[] = FMT;
-    char sepstr[] = {sep, '\0'};
+    char sepstr[] = {SEP, '\0'};
     strncat(FMTSEP, sepstr, 1);
+
     int r;
-    for (int np = 0; np < size; ++np)
+    for (int np = 0; np < NPTS; ++np)
     {
-        for (int nc = 0; nc < dims - 1; ++nc)
+        for (int nc = 0; nc < NDIM - 1; ++nc)
         {
-            r = fscanf(fp, FMTSEP, buffer + (np * dims) + nc);
+            r = fscanf(fp, FMTSEP, (tree+np)->split+nc);
             if (r == EOF)
             {
                 perror("Unexpected end of file while parsing. Exiting...");
                 exit(2);
             }
         }
-        r = fscanf(fp, FMTLAST, buffer + (np * dims) + dims - 1);
+        r = fscanf(fp, FMTLAST, (tree + np)->split+NDIM-1);
         if (r == EOF)
         {
             perror("Unexpected end of file while parsing. Exiting...");
             exit(3);
         }
     }
-    fclose(fp);
-    return buffer;
+    rewind(fp);
+    return tree;
 }
 
-void head(float_t *buffer, int len, int dims)
+void printHead(kdnode_t *tree, int len)
 {
-    /*************************************************
-    * Prints the first @param len entries from
-    * @param buffer.
-    *************************************************/
+    /* * * * * * * * * * * * * * * * * * * * * * * * *
+     * Prints the first @param len entries in the
+     * tree.
+     * * * * * * * * * * * * * * * * * * * * * * * * */
 
     // print point by point, coord by coord
     for (size_t np = 0; np < len; ++np)
     {
-        for (size_t nc = 0; nc < dims-1; ++nc)
+        for (size_t nc = 0; nc < NDIM - 1; ++nc)
         {
-            printf(PFMT, buffer[np*dims+nc]); 
+            printf(PFMT, (tree+np)->split[nc]);
         }
-        printf(PFMTLAST, buffer[np*dims+dims-1]);
+        printf(PFMTLAST, (tree+np)->split[NDIM-1]);
     }
+}
+
+void swapFloats(float_t *a, float_t *b)
+{
+    /* * * * * * * * * * * * * * * * * * * * * * * * *
+     * Swaps memory position of a and b.
+     * * * * * * * * * * * * * * * * * * * * * * * * */
+
+    float_t tmp = *a;
+    *a = *b;
+    *b = tmp;
+}
+
+void swapNodes(kdnode_t *a, kdnode_t *b)
+{
+    /* * * * * * * * * * * * * * * * * * * * * * * * *
+     * Swaps memory position of two nodes
+     * * * * * * * * * * * * * * * * * * * * * * * * */
+
+    for (size_t i=0; i < NDIM; ++i)
+    {
+       swapFloats(a->split+i, b->split+i);
+    }
+}
+
+int partition(kdnode_t *nodes, int low, int high, int axis)
+{
+    /* * * * * * * * * * * * * * * * * * * * * * * * *
+     * Organizes nodes between @params start and 
+     * @params stop along @param axis in smaller 
+     * and larger than the pivot element (high).
+     * * * * * * * * * * * * * * * * * * * * * * * * */
+
+    if (low >= high) return low; // single node case}
+
+    float_t pivot = (nodes+high)->split[axis];
+    // printf("Pivot: %6.3lf\n", pivot);
+
+    int i = low - 1;
+
+    for (int j = low; j < high; ++j)
+    {
+        if ((nodes+j)->split[axis] <= pivot)
+        {
+            ++i;
+            swapNodes(nodes+i, nodes+j);
+        }
+    }
+    swapNodes(nodes+i+1, nodes+high);
+    return i+1;   
+}
+
+void ompQuicksort(kdnode_t *nodes, int low, int high, int axis)
+{
+    /* * * * * * * * * * * * * * * * * * * * * * * * *
+     * Performs a paralle quicksort using openMP tasks.
+     * Assumes a parallel region has been opened.
+     * * * * * * * * * * * * * * * * * * * * * * * * */
+
+    if (low >= high) return; // single node case
+
+    // partitioning points
+    int pivot = partition(nodes, low, high, axis);
+    
+    // task to quicksort lower/upper sides
+    #pragma omp master
+    {
+        #pragma omp task
+        ompQuicksort(nodes, low, pivot-1, axis);
+
+        #pragma omp task
+        ompQuicksort(nodes, pivot, high, axis);
+    }
+}
+
+void quicksort(kdnode_t *nodes, int low, int high, int axis)
+{
+    /* * * * * * * * * * * * * * * * * * * * * * * * *
+     * Wrapper for ompQuicksort, opens a parallel
+     * region to correctly run tasks.
+     * * * * * * * * * * * * * * * * * * * * * * * * */
+
+    #pragma omp parallel
+    {
+        #pragma omp task
+        ompQuicksort(nodes, low, high, axis);
+    }
+}
+
+int growTree(kdnode_t *nodes, int low, int high, int axis)
+{
+    
 }
 
 
@@ -142,6 +216,8 @@ int main(int argc, char **argv)
     MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
     MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
+
+
 
     MPI_Finalize();
     return 0;

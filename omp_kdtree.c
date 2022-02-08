@@ -29,9 +29,9 @@
 // ==================================================================
 //              Global vars and struct definitions
 // ==================================================================
-#define INFILE "test_data.csv"
-#define NPTS 50
-#define NDIM 3
+#define INFILE "test_data2.csv"
+#define NPTS 500
+#define NDIM 2
 #define SEP ','
 
 int omp_size;
@@ -42,7 +42,7 @@ struct kdnode
 {
     int axis;
     float_t split[NDIM];
-    kdnode_t *left, *right;
+    int left, right;
 };
 
 // ==================================================================
@@ -181,7 +181,6 @@ void ompQuicksort(kdnode_t *nodes, int low, int high, int axis)
 
     #pragma omp task
     ompQuicksort(nodes, pivot, high, axis);
-
 }
 
 void quicksort(kdnode_t *nodes, int low, int high, int axis)
@@ -198,7 +197,7 @@ void quicksort(kdnode_t *nodes, int low, int high, int axis)
     }
 }
 
-kdnode_t *ompGrowTree(kdnode_t *nodes, int low, int high, int axis)
+int growTree(kdnode_t *nodes, int low, int high, int axis)
 {
     /* * * * * * * * * * * * * * * * * * * * * * * * *
      * Grows a tree starting from an unordered list
@@ -206,27 +205,53 @@ kdnode_t *ompGrowTree(kdnode_t *nodes, int low, int high, int axis)
      * open to spawn tasks.
      * * * * * * * * * * * * * * * * * * * * * * * * */
 
-    if (low >= high) // leaf handling
+    if (low == high) // leaf handling
     {
         (nodes+low) -> axis = axis;
-        (nodes+low) -> left = NULL;
-        (nodes+low) -> right = NULL;
-        return nodes+low;
+        (nodes+low) -> left = -1;
+        (nodes+low) -> right = -1;
+        return low;
     }
 
+    if (low > high) return -1;
+
     // quicksort the nodes and set median
+    quicksort(nodes, low, high, axis);
+    
     int median = (high + low) / 2;
     int new_axis = (axis + 1) % NDIM;
-    ompQuicksort(nodes, low, high, axis);
     (nodes+median) -> axis = axis;
 
-    #pragma omp task
-    (nodes+median) -> left = ompGrowTree(nodes, low, median-1, new_axis);
-    
-    #pragma omp task
-    (nodes+median) -> right = ompGrowTree(nodes, median+1, high, new_axis);
+    #pragma omp parallel
+    {
+        #pragma omp single
+        {
+            //#pragma omp task
+            (nodes+median) -> left = growTree(nodes, low, median-1, new_axis);
+        
+            //#pragma omp task
+            (nodes+median) -> right = growTree(nodes, median+1, high, new_axis);
+        }
+    }
+    return median;
+}
 
-    return nodes+median;
+void printTree(kdnode_t *tree)
+{
+    /* * * * * * * * * * * * * * * * * * * * * * * * *
+     * Prints the three 
+     * * * * * * * * * * * * * * * * * * * * * * * * */
+
+    for (int np = 0; np < NPTS; ++np)
+    {
+        printf("idx: %3d | vals: ",np);
+        for (size_t nc = 0; nc < NDIM; ++nc)
+        {
+            printf(PFMT, (tree + np)->split[nc]);
+        }
+        printf(" | ax: %2d | children: %3d , %3d\n", 
+                (tree+np) -> axis, (tree+np)->left, (tree+np)->right);
+    }
 }
 
 // ==================================================================
@@ -236,15 +261,11 @@ int main(int argc, char **argv)
 {
     // open file and read parameters and points
     kdnode_t *nodes = parseInputFile();
-    printHead(nodes, NPTS);
 
-    // printf("\n\nQUICKSORTING\n\n");
-    // quicksort(nodes, 0, NPTS-1, 0);
-    printf("\n\nGROW THE TREE!\n\n");
-    #pragma omp parallel
-    ompGrowTree(nodes, 0, NPTS-1, 0);
-    printHead(nodes, NPTS);
-
-
+    double timer = omp_get_wtime();
+    growTree(nodes, 0, NPTS-1, 0);
+    timer = omp_get_wtime() - timer;
+    printTree(nodes);
+    printf("\n\nTree grown in %lfs!\n", timer);
     return 0;
 }
