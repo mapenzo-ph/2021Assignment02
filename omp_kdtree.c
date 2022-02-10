@@ -8,8 +8,13 @@
 #endif
 
 // ==================================================================
-//                          Set precision
+//                      Set input data parameters
 // ==================================================================
+#define INFILE "test_data.csv"
+#define NPTS 50
+#define NDIM 2
+#define SEP ','
+
 #ifndef DOUBLE_PRECISION
 #define float_t float
 #define MPI_FLOAT_T MPI_FLOAT
@@ -27,16 +32,8 @@
 #endif
 
 // ==================================================================
-//              Global vars and struct definitions
+//                          Struct definitions
 // ==================================================================
-#define INFILE "test_data.csv"
-#define NPTS 50
-#define NDIM 2
-#define SEP ','
-
-int omp_size;
-int omp_rank;
-
 typedef struct kdnode kdnode_t;
 struct kdnode
 {
@@ -48,7 +45,6 @@ struct kdnode
 // ==================================================================
 //                          Helper functions
 // ==================================================================
-
 kdnode_t *parseInputFile()
 {
     /* * * * * * * * * * * * * * * * * * * * * * * * *
@@ -269,11 +265,21 @@ int main(int argc, char **argv)
     kdnode_t *nodes = parseInputFile();
 
     int root;
-    double timer = omp_get_wtime();
+
+    double time = omp_get_wtime();
     growTree(nodes, 0, NPTS-1, 0, &root);
-    timer = omp_get_wtime() - timer;
-    printTree(nodes);
-    printf("\n\nTree grown in %lfs!\n", timer);
-    printf("Tree root is located at node %d\n", root);
+    time = omp_get_wtime() - time;
+
+    // print tree for debug
+    if (NPTS <= 50)
+    {
+        printTree(nodes);
+        printf("\n\n");
+    }
+  
+    // print information about the tree
+    printf("Tree grown in %lfs\n", time);
+    printf("Tree root is at node %d\n", root);
+
     return 0;
 }

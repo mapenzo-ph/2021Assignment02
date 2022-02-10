@@ -4,10 +4,6 @@
 #include <time.h>
 #include <mpi.h>
 
-#ifdef _OPENMP
-#include <omp.h>
-#endif
-
 // ==================================================================
 //                          Set precision
 // ==================================================================
@@ -32,11 +28,11 @@
 // ==================================================================
 #define INFILE "test_data.csv"
 #define NPTS 50
-#define NDIM 3
+#define NDIM 2
 #define SEP ','
 
-int omp_size;
-int omp_rank;
+int mpi_size;
+int mpi_rank;
 
 typedef struct kdnode kdnode_t;
 struct kdnode
@@ -49,16 +45,15 @@ struct kdnode
 // ==================================================================
 //                          Helper functions
 // ==================================================================
-
 kdnode_t *parseInputFile()
 {
     /* * * * * * * * * * * * * * * * * * * * * * * * *
-     * Parses input file and stores points into an 
+     * Parses input file and stores points into an
      * array. Returns the array.
      * * * * * * * * * * * * * * * * * * * * * * * * */
 
     // allocate nodes
-    kdnode_t *tree = (kdnode_t*)malloc(NPTS*sizeof(kdnode_t));
+    kdnode_t *tree = (kdnode_t *)malloc(NPTS * sizeof(kdnode_t));
 
     // open input file
     FILE *fp = fopen(INFILE, "r");
@@ -78,14 +73,14 @@ kdnode_t *parseInputFile()
     {
         for (int nc = 0; nc < NDIM - 1; ++nc)
         {
-            r = fscanf(fp, FMTSEP, (tree+np)->split+nc);
+            r = fscanf(fp, FMTSEP, (tree + np)->split + nc);
             if (r == EOF)
             {
                 perror("Unexpected end of file while parsing. Exiting...");
                 exit(2);
             }
         }
-        r = fscanf(fp, FMTLAST, (tree + np)->split+NDIM-1);
+        r = fscanf(fp, FMTLAST, (tree + np)->split + NDIM - 1);
         if (r == EOF)
         {
             perror("Unexpected end of file while parsing. Exiting...");
@@ -108,9 +103,9 @@ void printHead(kdnode_t *tree, int len)
     {
         for (size_t nc = 0; nc < NDIM - 1; ++nc)
         {
-            printf(PFMT, (tree+np)->split[nc]);
+            printf(PFMT, (tree + np)->split[nc]);
         }
-        printf(PFMTLAST, (tree+np)->split[NDIM-1]);
+        printf(PFMTLAST, (tree + np)->split[NDIM - 1]);
     }
 }
 
@@ -131,73 +126,68 @@ void swapNodes(kdnode_t *a, kdnode_t *b)
      * Swaps memory position of two nodes
      * * * * * * * * * * * * * * * * * * * * * * * * */
 
-    for (size_t i=0; i < NDIM; ++i)
+    for (size_t i = 0; i < NDIM; ++i)
     {
-       swapFloats(a->split+i, b->split+i);
+        swapFloats(a->split + i, b->split + i);
     }
 }
 
 int partition(kdnode_t *nodes, int low, int high, int axis)
 {
     /* * * * * * * * * * * * * * * * * * * * * * * * *
-     * Organizes nodes between @params start and 
-     * @params stop along @param axis in smaller 
+     * Organizes nodes between @params start and
+     * @params stop along @param axis in smaller
      * and larger than the pivot element (high).
      * * * * * * * * * * * * * * * * * * * * * * * * */
 
-    if (low >= high) return low; // single node case}
+    if (low >= high)
+        return low; // single node case}
 
-    float_t pivot = (nodes+high)->split[axis];
+    float_t pivot = (nodes + high)->split[axis];
     // printf("Pivot: %6.3lf\n", pivot);
 
     int i = low - 1;
 
     for (int j = low; j < high; ++j)
     {
-        if ((nodes+j)->split[axis] <= pivot)
+        if ((nodes + j)->split[axis] <= pivot)
         {
             ++i;
-            swapNodes(nodes+i, nodes+j);
+            swapNodes(nodes + i, nodes + j);
         }
     }
-    swapNodes(nodes+i+1, nodes+high);
-    return i+1;   
+    swapNodes(nodes + i + 1, nodes + high);
+    return i + 1;
 }
 
-void ompQuicksort(kdnode_t *nodes, int low, int high, int axis)
+void quicksort(kdnode_t *nodes, int low, int high, int axis)
 {
     /* * * * * * * * * * * * * * * * * * * * * * * * *
      * Performs a paralle quicksort using openMP tasks.
      * Assumes a parallel region has been opened.
      * * * * * * * * * * * * * * * * * * * * * * * * */
 
-    if (low >= high) return; // single node case
+    if (low >= high)
+        return; // single node case
 
     // partitioning points
     int pivot = partition(nodes, low, high, axis);
-    
-    // task to quicksort lower/upper sides
-    #pragma omp master
+
+// task to quicksort lower/upper sides
+#pragma omp parallel
     {
-        #pragma omp task
-        ompQuicksort(nodes, low, pivot-1, axis);
+#pragma omp single
+        {
+#pragma omp task
+            {
+                quicksort(nodes, low, pivot - 1, axis);
+            }
 
-        #pragma omp task
-        ompQuicksort(nodes, pivot, high, axis);
-    }
-}
-
-void quicksort(kdnode_t *nodes, int low, int high, int axis)
-{
-    /* * * * * * * * * * * * * * * * * * * * * * * * *
-     * Wrapper for ompQuicksort, opens a parallel
-     * region to correctly run tasks.
-     * * * * * * * * * * * * * * * * * * * * * * * * */
-
-    #pragma omp parallel
-    {
-        #pragma omp task
-        ompQuicksort(nodes, low, high, axis);
+#pragma omp task
+            {
+                quicksort(nodes, pivot, high, axis);
+            }
+        }
     }
 }
 
