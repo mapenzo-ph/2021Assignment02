@@ -7,7 +7,8 @@
 #PBS -o kdtree.out
 #PBS -j oe
 
-cd ${PBS_O_WORKDIR}
-module load openmpi-4.1.1+gnu-9.3.0
+if [ ! -d data ]
+then mkdir data
+fi
 
-mpirun -np 2 --mca btl ^openib kdtree test_data.csv
+cd ${PBS_O_WORKDIR}

@@ -1,6 +1,1 @@
-.vscode
-omp_kdtree
-mpi_kdtree
-kdtree.out
 test_data.csv
-test_data2.csv

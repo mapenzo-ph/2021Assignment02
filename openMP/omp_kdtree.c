@@ -2,21 +2,27 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include <mpi.h>
+
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 // ==================================================================
-//                          Set precision
+//                      Set input data parameters
 // ==================================================================
+#define INFILE "../test_data.csv"
+#define NPTS 50
+#define NDIM 2
+#define SEP ','
+
 #ifndef DOUBLE_PRECISION
 #define float_t float
-#define MPI_FLOAT_T MPI_FLOAT
 #define FMT "%f"
 #define FMTLAST "%f\n"
 #define PFMT "%6.3f "
 #define PFMTLAST "%6.3f\n"
 #else
 #define float_t double
-#define MPI_FLOAT_T MPI_DOUBLE
 #define FMT "%lf"
 #define FMTLAST "%lf\n"
 #define PFMT "%6.3lf "
@@ -24,16 +30,8 @@
 #endif
 
 // ==================================================================
-//              Global vars and struct definitions
+//                          Struct definitions
 // ==================================================================
-#define INFILE "test_data.csv"
-#define NPTS 50
-#define NDIM 2
-#define SEP ','
-
-int mpi_size;
-int mpi_rank;
-
 typedef struct kdnode kdnode_t;
 struct kdnode
 {
@@ -48,12 +46,12 @@ struct kdnode
 kdnode_t *parseInputFile()
 {
     /* * * * * * * * * * * * * * * * * * * * * * * * *
-     * Parses input file and stores points into an
+     * Parses input file and stores points into an 
      * array. Returns the array.
      * * * * * * * * * * * * * * * * * * * * * * * * */
 
     // allocate nodes
-    kdnode_t *tree = (kdnode_t *)malloc(NPTS * sizeof(kdnode_t));
+    kdnode_t *tree = (kdnode_t*)malloc(NPTS*sizeof(kdnode_t));
 
     // open input file
     FILE *fp = fopen(INFILE, "r");
@@ -73,14 +71,14 @@ kdnode_t *parseInputFile()
     {
         for (int nc = 0; nc < NDIM - 1; ++nc)
         {
-            r = fscanf(fp, FMTSEP, (tree + np)->split + nc);
+            r = fscanf(fp, FMTSEP, (tree+np)->split+nc);
             if (r == EOF)
             {
                 perror("Unexpected end of file while parsing. Exiting...");
                 exit(2);
             }
         }
-        r = fscanf(fp, FMTLAST, (tree + np)->split + NDIM - 1);
+        r = fscanf(fp, FMTLAST, (tree + np)->split+NDIM-1);
         if (r == EOF)
         {
             perror("Unexpected end of file while parsing. Exiting...");
@@ -103,9 +101,9 @@ void printHead(kdnode_t *tree, int len)
     {
         for (size_t nc = 0; nc < NDIM - 1; ++nc)
         {
-            printf(PFMT, (tree + np)->split[nc]);
+            printf(PFMT, (tree+np)->split[nc]);
         }
-        printf(PFMTLAST, (tree + np)->split[NDIM - 1]);
+        printf(PFMTLAST, (tree+np)->split[NDIM-1]);
     }
 }
 
@@ -126,38 +124,37 @@ void swapNodes(kdnode_t *a, kdnode_t *b)
      * Swaps memory position of two nodes
      * * * * * * * * * * * * * * * * * * * * * * * * */
 
-    for (size_t i = 0; i < NDIM; ++i)
+    for (size_t i=0; i < NDIM; ++i)
     {
-        swapFloats(a->split + i, b->split + i);
+       swapFloats(a->split+i, b->split+i);
     }
 }
 
 int partition(kdnode_t *nodes, int low, int high, int axis)
 {
     /* * * * * * * * * * * * * * * * * * * * * * * * *
-     * Organizes nodes between @params start and
-     * @params stop along @param axis in smaller
+     * Organizes nodes between @params start and 
+     * @params stop along @param axis in smaller 
      * and larger than the pivot element (high).
      * * * * * * * * * * * * * * * * * * * * * * * * */
 
-    if (low >= high)
-        return low; // single node case}
+    if (low >= high) return low; // single node case}
 
-    float_t pivot = (nodes + high)->split[axis];
+    float_t pivot = (nodes+high)->split[axis];
     // printf("Pivot: %6.3lf\n", pivot);
 
     int i = low - 1;
 
     for (int j = low; j < high; ++j)
     {
-        if ((nodes + j)->split[axis] <= pivot)
+        if ((nodes+j)->split[axis] <= pivot)
         {
             ++i;
-            swapNodes(nodes + i, nodes + j);
+            swapNodes(nodes+i, nodes+j);
         }
     }
-    swapNodes(nodes + i + 1, nodes + high);
-    return i + 1;
+    swapNodes(nodes+i+1, nodes+high);
+    return i+1;   
 }
 
 void quicksort(kdnode_t *nodes, int low, int high, int axis)
@@ -167,23 +164,22 @@ void quicksort(kdnode_t *nodes, int low, int high, int axis)
      * Assumes a parallel region has been opened.
      * * * * * * * * * * * * * * * * * * * * * * * * */
 
-    if (low >= high)
-        return; // single node case
+    if (low >= high) return; // single node case
 
     // partitioning points
     int pivot = partition(nodes, low, high, axis);
-
-// task to quicksort lower/upper sides
-#pragma omp parallel
+    
+    // task to quicksort lower/upper sides
+    #pragma omp parallel
     {
-#pragma omp single
+        #pragma omp single
         {
-#pragma omp task
+            #pragma omp task
             {
-                quicksort(nodes, low, pivot - 1, axis);
+                quicksort(nodes, low, pivot-1, axis);
             }
 
-#pragma omp task
+            #pragma omp task
             {
                 quicksort(nodes, pivot, high, axis);
             }
@@ -191,24 +187,97 @@ void quicksort(kdnode_t *nodes, int low, int high, int axis)
     }
 }
 
-int growTree(kdnode_t *nodes, int low, int high, int axis)
+void growTree(kdnode_t *nodes, int low, int high, int axis, int *idx)
 {
+    /* * * * * * * * * * * * * * * * * * * * * * * * *
+     * Grows a tree starting from an unordered list
+     * of nodes. Assumes a parallel region is already
+     * open to spawn tasks.
+     * * * * * * * * * * * * * * * * * * * * * * * * */
+
+    if (low == high) // leaf handling
+    {
+        (nodes+low) -> axis = axis;
+        (nodes+low) -> left = -1;
+        (nodes+low) -> right = -1;
+        *idx=low;
+        return;
+    }
+
+    if (low > high)
+    {
+        *idx=-1;
+        return;
+    }
+
+    // quicksort the nodes and set median
+    quicksort(nodes, low, high, axis);
     
+    int median = (high + low) / 2;
+    int new_axis = (axis + 1) % NDIM;
+    (nodes+median) -> axis = axis;
+    *idx = median;
+
+    #pragma omp parallel
+    {
+        #pragma omp single
+        {
+            #pragma omp task
+            {
+                growTree(nodes, low, median-1, new_axis, &((nodes+median)->left));
+            }
+
+            #pragma omp task
+            {
+                growTree(nodes, median+1, high, new_axis, &((nodes+median)->right));
+            }
+        }
+    }
+    return;
 }
 
+void printTree(kdnode_t *tree)
+{
+    /* * * * * * * * * * * * * * * * * * * * * * * * *
+     * Prints the three 
+     * * * * * * * * * * * * * * * * * * * * * * * * */
 
-// ========================================================
-//                      Main program
-// ========================================================
+    for (int np = 0; np < NPTS; ++np)
+    {
+        printf("idx: %3d | vals: ",np);
+        for (size_t nc = 0; nc < NDIM; ++nc)
+        {
+            printf(PFMT, (tree + np)->split[nc]);
+        }
+        printf(" | ax: %2d | children: %3d , %3d\n", 
+                (tree+np) -> axis, (tree+np)->left, (tree+np)->right);
+    }
+}
+
+// ==================================================================
+//                          MAIN PROGRAM
+// ==================================================================
 int main(int argc, char **argv)
 {
-    // init and get parameters
-    MPI_Init(&argc, &argv);
-    MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
-    MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
+    // open file and read parameters and points
+    kdnode_t *nodes = parseInputFile();
 
+    int root;
 
+    double time = omp_get_wtime();
+    growTree(nodes, 0, NPTS-1, 0, &root);
+    time = omp_get_wtime() - time;
 
-    MPI_Finalize();
+    // print tree for debug
+    if (NPTS <= 50)
+    {
+        printTree(nodes);
+        printf("\n\n");
+    }
+  
+    // print information about the tree
+    printf("Tree grown in %lfs\n", time);
+    printf("Tree root is at node %d\n", root);
+
     return 0;
 }
