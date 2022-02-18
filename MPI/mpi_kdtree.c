@@ -42,7 +42,7 @@ struct kdnode
 
 // declare MPI datatype for comms as global variable
 MPI_Datatype MPI_kdnode_t;
-int iteration = 0;
+
 // ==================================================================
 //                          Helper functions
 // ==================================================================
@@ -267,13 +267,11 @@ int growTree(kdnode_t *tree, int low, int high, int axis, MPI_Comm comm, int off
     if (comm_rank == 0)
     {   
         MPI_Recv(&nright, 1, MPI_INT, 1, 11*comm_size, comm, &status);
-        printf("left %d, right %d\n", nleft, nright);
         (tree+median) -> axis = axis;
         (tree+median) -> left = nleft;
         (tree+median) -> right = nright;
         // receive reordered points
-        MPI_Recv(tree+median+1, right_count, MPI_kdnode_t, 1, 13*comm_size, comm, &status);
-        
+        MPI_Recv(tree+median+1, right_count, MPI_kdnode_t, 1, 13*comm_size, comm, &status);    
     }
     else if (comm_rank == 1)
     {
@@ -286,14 +284,14 @@ int growTree(kdnode_t *tree, int low, int high, int axis, MPI_Comm comm, int off
     return offset + median;
 }
 
-void printTree(kdnode_t *tree, int branch, int mpi_rank)
+void printTree(kdnode_t *tree, int mpi_rank)
 {
     /* * * * * * * * * * * * * * * * * * * * * * * * *
      * Prints the three
      * * * * * * * * * * * * * * * * * * * * * * * * */
-    if (mpi_rank == branch)
+    if (mpi_rank == 0)
     {
-        printf("\n\nPrinting branch %d\n\n", branch);
+        printf("\n\n");
         for (int np = 0; np < NPTS; ++np)
         {
             printf("idx: %3d | vals: ", np);
@@ -304,8 +302,8 @@ void printTree(kdnode_t *tree, int branch, int mpi_rank)
             printf(" | ax: %2d | children: %3d , %3d\n",
                 (tree + np)->axis, (tree + np)->left, (tree + np)->right);
         }
+        printf("\n\n");
     }
-    MPI_Barrier(MPI_COMM_WORLD);
 }
 
 // ==================================================================
@@ -338,7 +336,7 @@ int main(int argc, char **argv)
     
 #ifndef NDEBUG
     // print tree for debug
-    printTree(tree, 0, mpi_rank);
+    printTree(tree, mpi_rank);
 #endif
     
     // average runtimes of different procs
@@ -349,10 +347,9 @@ int main(int argc, char **argv)
     {
         // print information about the tree
         printf("Tree grown in %lfs\n", avg_time/mpi_size);
-        printf("Tree root is at node %d\n", root);
+        printf("Tree root is at node %d\n\n", root);
     }
     
-
     MPI_Finalize();
     return 0;
 }
