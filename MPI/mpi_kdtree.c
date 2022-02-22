@@ -7,8 +7,10 @@
 // ==================================================================
 //                      Set input data parameters
 // ==================================================================
-#define INFILE "../test_data.csv"
-#define NPTS 50
+#define INFILE "../data10e9.csv"
+#ifndef NPTS
+#define NPTS 100
+#endif
 #define NDIM 2
 #define SEP ','
 

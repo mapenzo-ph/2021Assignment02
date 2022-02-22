@@ -1,5 +1,5 @@
 CC = mpicc
-CFLAGS = -fopenmp -std=c11 -DDOUBLE_PRECISION
+CFLAGS = -fopenmp -std=c11 -DDOUBLE_PRECISION -DNDEBUG $(USER_CFLAGS)
 LDFLAGS = 
 
 SRC = mpi_kdtree.c
@@ -14,4 +14,4 @@ default:	$(EXE)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $<
 
 clean:
-	rm $(EXE) $(OUT)
+	rm $(EXE)

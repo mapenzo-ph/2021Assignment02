@@ -16,6 +16,12 @@ $ module load python/3.8.2/gnu/4.8.5
 from sys import argv
 import random as r
 
+if len(argv) != 4:
+    print("""
+Usage:  python3 test_data.py "/path/to/output" <NDIM> <size>  
+    """)
+    exit(-1)
+
 out = open(argv[1], "w")
 NDIM = int(argv[2])
 size = int(argv[3])
