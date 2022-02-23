@@ -5,15 +5,16 @@
 #include <mpi.h>
 
 // ==================================================================
-//                      Set input data parameters
+//                      Input parameters
 // ==================================================================
-#define INFILE "../data10e9.csv"
-#ifndef NPTS
-#define NPTS 100
-#endif
+#define DATA "../test_data.csv"
+#define NPTS 50
 #define NDIM 2
 #define SEP ','
 
+// ==================================================================
+//                      Set precision
+// ==================================================================
 #ifndef DOUBLE_PRECISION
 #define float_t float
 #define MPI_FLOAT_T MPI_FLOAT
@@ -31,24 +32,22 @@
 #endif
 
 // ==================================================================
-//                          Struct definitions
+//                          Struct definition
 // ==================================================================
 typedef struct kdnode kdnode_t;
 struct kdnode
 {
     float_t split[NDIM];
-    int axis;
-    int left;
-    int right;
+    int axis, left, right;
 };
 
 // declare MPI datatype for comms as global variable
 MPI_Datatype MPI_kdnode_t;
 
 // ==================================================================
-//                          Helper functions
+//                          User functions
 // ==================================================================
-kdnode_t *parseInputFile(int mpi_rank)
+kdnode_t *parseFile(int mpi_rank)
 {
     /* * * * * * * * * * * * * * * * * * * * * * * * *
      * Parses input file and stores points into an
@@ -61,7 +60,7 @@ kdnode_t *parseInputFile(int mpi_rank)
         kdnode_t *tree = (kdnode_t *)malloc(NPTS * sizeof(kdnode_t));
 
         // open input file
-        FILE *fp = fopen(INFILE, "r");
+        FILE *fp = fopen(DATA, "r");
         if (fp == NULL)
         {
             perror("Unable to open input file! Exiting...\n");
@@ -95,195 +94,8 @@ kdnode_t *parseInputFile(int mpi_rank)
         fclose(fp);
         return tree;
     }
-    else return NULL;
-}
-
-void swapFloats(float_t *a, float_t *b)
-{
-    /* * * * * * * * * * * * * * * * * * * * * * * * *
-     * Swaps memory position of a and b.
-     * * * * * * * * * * * * * * * * * * * * * * * * */
-
-    float_t tmp = *a;
-    *a = *b;
-    *b = tmp;
-}
-
-void swapNodes(kdnode_t *a, kdnode_t *b)
-{
-    /* * * * * * * * * * * * * * * * * * * * * * * * *
-     * Swaps memory position of two nodes
-     * * * * * * * * * * * * * * * * * * * * * * * * */
-
-    for (size_t i = 0; i < NDIM; ++i)
-    {
-        swapFloats(a->split + i, b->split + i);
-    }
-}
-
-int partition(kdnode_t *nodes, int low, int high, int axis)
-{
-    /* * * * * * * * * * * * * * * * * * * * * * * * *
-     * Organizes nodes between @params start and 
-     * @params stop along @param axis in smaller 
-     * and larger than the pivot element (high).
-     * * * * * * * * * * * * * * * * * * * * * * * * */
-
-    if (low >= high) return low; // single node case}
-
-    float_t pivot = (nodes+high)->split[axis];
-    // printf("Pivot: %6.3lf\n", pivot);
-
-    int i = low - 1;
-
-    for (int j = low; j < high; ++j)
-    {
-        if ((nodes+j)->split[axis] <= pivot)
-        {
-            ++i;
-            swapNodes(nodes+i, nodes+j);
-        }
-    }
-    swapNodes(nodes+i+1, nodes+high);
-    return i+1;   
-}
-
-void quicksort(kdnode_t *nodes, int low, int high, int axis)
-{
-    /* * * * * * * * * * * * * * * * * * * * * * * * *
-     * Performs a parallel quicksort using openMP tasks.
-     * Assumes a parallel region has been opened.
-     * * * * * * * * * * * * * * * * * * * * * * * * */
-
-    if (low >= high) return; // single node case
-
-    // partitioning points
-    int pivot = partition(nodes, low, high, axis);
-    
-    // task to quicksort lower/upper sides
-    quicksort(nodes, low, pivot-1, axis);
-    quicksort(nodes, pivot, high, axis);
-}
-
-int growTreeSerial(kdnode_t *tree, int low, int high, int axis, int offset)
-{
-    /* * * * * * * * * * * * * * * * * * * * * * * * *
-     * growTree serial for when communicator is just 
-     * one process
-     * * * * * * * * * * * * * * * * * * * * * * * * */
-
-    if (low == high) // leaf handling
-    {
-        (tree + low)->axis = axis;
-        (tree + low)->left = -1;
-        (tree + low)->right = -1;
-        return offset + low;
-    }
-
-    if (low > high)
-    {
-        return -1;
-    }
-
-    // recursion strategy
-    int median = (high+low)/2;
-    int new_axis = (axis + 1) % NDIM;
-    
-    // assign values to median node
-    quicksort(tree, low, high, axis);
-    (tree+median) -> axis = axis;
-
-    // grow subtrees
-    (tree+median)->left = growTreeSerial(tree, low, median-1, new_axis, offset);
-    (tree+median)->right = growTreeSerial(tree, median+1, high, new_axis, offset);
-    
-    return offset+median;
-}
-
-void splitComms(MPI_Comm comm, MPI_Comm *new_comm)
-{
-    // copy in comm
-    int rank, color, key;
-
-    MPI_Comm_rank(comm, &rank);
-    color = rank % 2;
-    key = rank / 2;
-
-    MPI_Comm_split(comm, color, key, new_comm);
-}
-
-int growTree(kdnode_t *tree, int low, int high, int axis, MPI_Comm comm, int offset)
-{
-    /* * * * * * * * * * * * * * * * * * * * * * * * *
-     * Wrapper for the growTreeParallel and Serial, 
-     * uses one or the other depending on the size
-     * of the communicator
-     * * * * * * * * * * * * * * * * * * * * * * * * */
-
-    // get size and ranks in communicator
-    int comm_size, comm_rank;
-    MPI_Comm_size(comm, &comm_size);
-    MPI_Comm_rank(comm, &comm_rank);
-
-    // single process in communicator case
-    if (comm_size <= 1)
-    {
-        return growTreeSerial(tree, low, high, axis, offset);
-    }
-
-    // parallel case
-    int median = (high + low) / 2;
-    int new_axis = (axis + 1) % NDIM;
-    int right_count = high - median;
-    MPI_Status status;
-
-    if (comm_rank == 0)
-    {
-        // if root: quicksort, assign axis to median node, send right points to 1
-        quicksort(tree, low, high, axis);
-        MPI_Send(tree+median+1, right_count, MPI_kdnode_t, 1, 10*comm_size, comm);
-    }
-    else if (comm_rank == 1)
-    {
-        // if proc 1: allocate space for points and then receive
-        tree = (kdnode_t *)malloc(right_count*sizeof(kdnode_t));
-        MPI_Recv(tree, right_count, MPI_kdnode_t, 0, 10*comm_size, comm, &status);
-    }
-
-    // create left and right communicators
-    MPI_Comm new_comm;
-    splitComms(comm, &new_comm);
-
-    // call next step
-    int nleft, nright;
-    if (comm_rank % 2 == 0)
-    {
-        nleft = growTree(tree, 0, median-1, new_axis, new_comm, offset);
-    }
     else
-    {
-        nright = growTree(tree, 0, right_count-1, new_axis, new_comm, offset+median+1);
-    }
-
-    // send points back to root
-    if (comm_rank == 0)
-    {   
-        MPI_Recv(&nright, 1, MPI_INT, 1, 11*comm_size, comm, &status);
-        (tree+median) -> axis = axis;
-        (tree+median) -> left = nleft;
-        (tree+median) -> right = nright;
-        // receive reordered points
-        MPI_Recv(tree+median+1, right_count, MPI_kdnode_t, 1, 13*comm_size, comm, &status);    
-    }
-    else if (comm_rank == 1)
-    {
-        MPI_Send(&nright, 1, MPI_INT, 0, 11*comm_size, comm);
-        // send reordered points
-        MPI_Send(tree, right_count, MPI_kdnode_t, 0, 13*comm_size, comm);
-        free(tree);
-    }
-
-    return offset + median;
+        return NULL;
 }
 
 void printTree(kdnode_t *tree, int mpi_rank)
@@ -302,10 +114,176 @@ void printTree(kdnode_t *tree, int mpi_rank)
                 printf(PFMT, (tree + np)->split[nc]);
             }
             printf(" | ax: %2d | children: %3d , %3d\n",
-                (tree + np)->axis, (tree + np)->left, (tree + np)->right);
+                   (tree + np)->axis, (tree + np)->left, (tree + np)->right);
         }
-        printf("\n\n");
+        printf("\n");
     }
+}
+
+inline void swap(kdnode_t *a, kdnode_t *b)
+{
+    float_t tmp[NDIM];
+    memcpy(tmp, a->split, sizeof(tmp));
+    memcpy(a->split, b->split, sizeof(tmp));
+    memcpy(b->split, tmp, sizeof(tmp));
+}
+
+int findMedian(kdnode_t *data, int start, int end, int axis)
+{
+    if (end <= start)
+        return -1;
+    if (end == start + 1)
+        return start;
+
+    int p, store;
+    int md = start + (end - start) / 2;
+    double pivot;
+
+    while (1)
+    {
+        // take median as pivot
+        pivot = (data + md)->split[axis];
+
+        // swap median with end
+        swap((data + md), (data + end - 1));
+
+        for (p = store = start; p < end; ++p)
+        {
+            if ((data + p)->split[axis] < pivot)
+            {
+                if (p != store)
+                    swap((data + p), (data + store));
+                ++store;
+            }
+        }
+
+        swap((data + store), (data + end - 1));
+
+        if ((data + store)->split[axis] == (data + md)->split[axis])
+            return md;
+
+        if (store > md)
+            end = store;
+        else
+            start = store;
+    }
+}
+
+void splitComms(MPI_Comm comm, MPI_Comm *new_comm)
+{
+    // copy in comm
+    int rank, color, key;
+
+    MPI_Comm_rank(comm, &rank);
+    color = rank % 2;
+    key = rank / 2;
+
+    MPI_Comm_split(comm, color, key, new_comm);
+}
+
+int growTreeSerial(kdnode_t *tree, int start, int end, int offset, int axis)
+{
+    /* * * * * * * * * * * * * * * * * * * * * * * * *
+     * growTree serial for when communicator is just
+     * one process
+     * * * * * * * * * * * * * * * * * * * * * * * * */
+
+    // when len of input data is 0 return 0
+    if (!(end-start)) return -1;
+
+    // else do the recursive procedure
+    int md;
+    if ((md = findMedian(tree, start, end, axis)) >= 0 ) 
+    {
+        (tree+md)->axis = axis;
+        axis = (axis+1) % NDIM;
+
+        (tree+md)->left = growTreeSerial(tree, start, md, offset, axis);
+        (tree+md)->right = growTreeSerial(tree, md+1, end, offset, axis);
+    }
+    return md+offset;
+}
+
+int growTree(kdnode_t *tree, int start, int end, int offset, int axis, MPI_Comm comm)
+{
+    /* * * * * * * * * * * * * * * * * * * * * * * * *
+     * Wrapper for the growTreeParallel and Serial, 
+     * uses one or the other depending on the size
+     * of the communicator
+     * * * * * * * * * * * * * * * * * * * * * * * * */
+
+    // get size and ranks in communicator
+    int comm_size, comm_rank;
+    MPI_Comm_size(comm, &comm_size);
+    MPI_Comm_rank(comm, &comm_rank);
+
+    // single process in communicator case
+    if (comm_size <= 1)
+    {
+        return growTreeSerial(tree, start, end, offset, axis);
+    }
+
+    // parallel case
+    int md = 0, right_count = 0;
+    int nleft = -1, nright = -1;
+    MPI_Status status;
+
+    if (comm_rank == 0)
+    {
+        md = findMedian(tree, start, end, axis);
+        (tree + md)->axis = axis;
+    }
+    
+    MPI_Bcast(&md, 1, MPI_INT, 0, comm);
+    right_count = (end - start) - md -1;
+
+    if (comm_rank == 0)
+    {
+        // find median and amount of data to send
+        MPI_Send(tree+md+1, right_count, MPI_kdnode_t, 1, 10*comm_size, comm);
+    }
+    else if (comm_rank == 1)
+    {
+        // receive from root
+        tree = (kdnode_t *)malloc(right_count*sizeof(kdnode_t));
+        MPI_Recv(tree, right_count, MPI_kdnode_t, 0, 10*comm_size, comm, &status);
+    }
+    
+    // update axis
+    axis = (axis + 1) % NDIM;
+
+    // split communicator 
+    MPI_Comm new_comm;
+    splitComms(comm, &new_comm);
+
+    // call next step with new communicators
+    if (comm_rank % 2 == 0)
+    {
+        nleft = growTree(tree, 0, md, offset, axis, new_comm);
+    }
+    else
+    {
+        nright = growTree(tree, 0, right_count,  offset+md+1, axis, new_comm);
+    }
+
+    // send points back to root
+    if (comm_rank == 0)
+    {   
+        MPI_Recv(&nright, 1, MPI_INT, 1, 11*comm_size, comm, &status);
+        (tree+md) -> left = nleft;
+        (tree+md) -> right = nright;
+        // receive reordered points
+        MPI_Recv(tree+md+1, right_count, MPI_kdnode_t, 1, 13*comm_size, comm, &status);    
+    }
+    else if (comm_rank == 1)
+    {
+        MPI_Send(&nright, 1, MPI_INT, 0, 11*comm_size, comm);
+        // send reordered points
+        MPI_Send(tree, right_count, MPI_kdnode_t, 0, 13*comm_size, comm);
+        free(tree);
+    }
+
+    return offset + md;
 }
 
 // ==================================================================
@@ -327,20 +305,20 @@ int main(int argc, char **argv)
     int mpi_size, mpi_rank;
     MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
     MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
-    
+
     // read file
-    kdnode_t *tree = parseInputFile(mpi_rank);
+    kdnode_t *tree = parseFile(mpi_rank);
 
     // grow the tree and take time
-    double time = MPI_Wtime();  
-    int root = growTree(tree, 0, NPTS-1, 0, MPI_COMM_WORLD, 0);
+    double time = MPI_Wtime();
+    int root = growTree(tree, 0, NPTS, 0, 0, MPI_COMM_WORLD);
     time = MPI_Wtime() - time;
-    
+
 #ifndef NDEBUG
     // print tree for debug
     printTree(tree, mpi_rank);
 #endif
-    
+
     // average runtimes of different procs
     double avg_time;
     MPI_Reduce(&time, &avg_time, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
@@ -348,10 +326,10 @@ int main(int argc, char **argv)
     if (mpi_rank == 0)
     {
         // print information about the tree
-        printf("Tree grown in %lfs\n", avg_time/mpi_size);
+        printf("Tree grown in %lfs\n", avg_time / mpi_size);
         printf("Tree root is at node %d\n\n", root);
     }
-    
+
     MPI_Finalize();
     return 0;
 }
