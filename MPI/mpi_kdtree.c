@@ -7,8 +7,7 @@
 // ==================================================================
 //                      Input parameters
 // ==================================================================
-#define DATA "../test_data.csv"
-#define NPTS 50
+#define DATA "../test_data_e09.csv"
 #define NDIM 2
 #define SEP ','
 
@@ -120,7 +119,7 @@ void printTree(kdnode_t *tree, int mpi_rank)
     }
 }
 
-inline void swap(kdnode_t *a, kdnode_t *b)
+void swap(kdnode_t *a, kdnode_t *b)
 {
     float_t tmp[NDIM];
     memcpy(tmp, a->split, sizeof(tmp));
@@ -309,6 +308,8 @@ int main(int argc, char **argv)
     // read file
     kdnode_t *tree = parseFile(mpi_rank);
 
+    MPI_Barrier(MPI_COMM_WORLD); // wait for root before timing
+
     // grow the tree and take time
     double time = MPI_Wtime();
     int root = growTree(tree, 0, NPTS, 0, 0, MPI_COMM_WORLD);
@@ -326,7 +327,7 @@ int main(int argc, char **argv)
     if (mpi_rank == 0)
     {
         // print information about the tree
-        printf("Tree grown in %lfs\n", avg_time / mpi_size);
+        printf("Tree grown in %lfs\n", avg_time/mpi_size);
         printf("Tree root is at node %d\n\n", root);
     }
 

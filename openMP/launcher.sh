@@ -1,19 +1,41 @@
 #!/bin/bash
 
 #PBS -N OMP_kd3
-#PBS -q dssc_gpu
+#PBS -q dssc
 #PBS -l nodes=1:ppn=24
-#PBS -l walltime=00:05:00
+#PBS -l walltime=05:00:00
 #PBS -o kdtree.out
 #PBS -j oe
+
+cd ${PBS_O_WORKDIR}
 
 if [ ! -d data ]
 then mkdir data
 fi
 
-cd ${PBS_O_WORKDIR}
-export OMP_NUM_THREADS=8
-./omp_kdtree
+function run {
+    export OMP_NUM_THREADS=${1}
+    make clean
+    make USER_CFLAGS="-DNPTS=$2"
+    echo > "" data/${1}_${2}
+    for j in {1..5}
+    do 
+        ./omp_kdtree >> data/${1}_${2}
+        echo "" >> data/${1}_${2}
+    done
+}
 
-export OMP_NESTED=TRUE
-./omp_kdtree
+#data for strong scaling
+# run 1 100000000
+# run 2 100000000
+# run 4 100000000
+# run 8 100000000
+# run 16 100000000
+
+# data for weak scaling
+run 1 10000000
+run 2 20000000
+run 4 40000000
+run 8 80000000
+run 16 160000000
+

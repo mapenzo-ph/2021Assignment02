@@ -1,8 +1,8 @@
-CC = mpicc
+CC = cc
 CFLAGS = -Wall -O3 -march=native -std=c11 -DDOUBLE_PRECISION -DNDEBUG $(USER_CFLAGS)
 LDFLAGS = 
 
-SRC = mpi_kdtree.c
+SRC = omp_kdtree.c
 EXE = $(SRC:.c=)
 OUT = $(SRC:.c=.out)
 
@@ -14,4 +14,4 @@ default:	$(EXE)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $<
 
 clean:
-	rm $(EXE)
+	rm $(EXE) $(OUT)

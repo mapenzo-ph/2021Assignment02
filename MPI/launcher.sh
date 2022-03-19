@@ -1,9 +1,9 @@
 #!/bin/bash
 
 #PBS -N MPI_kd3
-#PBS -q dssc_gpu
+#PBS -q dssc
 #PBS -l nodes=2:ppn=24
-#PBS -l walltime=05:00:00
+#PBS -l walltime=20:00:00
 #PBS -o kdtree.out
 #PBS -j oe
 
@@ -13,47 +13,32 @@ module load openmpi-4.1.1+gnu-9.3.0
 if [ ! -d data ]
 then mkdir data
 fi
-
-function run_kdtree_all {
+ 
+function run {
+    cmd="mpirun -np ${1} --map-by core"
     make clean
-    make USER_CFLAGS="-DNPTS=$1"
-    for i in {0..5}
-    do
-        nproc=$((2**$i))
-        echo "" > data/${nproc}_${1}
-        for j in {0..4}
-        do  
-            mpirun -np $nproc --map-by ppr:1:core --mca btl ^openib mpi_kdtree >> data/${nproc}_${1}
-        done
+    make USER_CFLAGS="-DNPTS=${2}"
+    echo > "" data/${1}_${2}
+    for j in {1..5}
+    do 
+        ${cmd} mpi_kdtree >> data/${1}_${2}
+        echo "" >> data/${1}_${2}
     done
-    
 }
 
-function run_kdtree_high {
-    make clean
-    make USER_CFLAGS="-DNPTS=$1"
-    for i in {4..5}
-    do
-        nproc=$((2**$i))
-        echo "" > data/${nproc}_${1}
-        for j in {0..4}
-        do  
-            mpirun -np $nproc --map-by ppr:1:core --mca btl ^openib mpi_kdtree >> data/${nproc}_${1}
-        done
-    done
-    
-}
+# data for strong scaling
+run 1 100000000
+run 2 100000000
+run 4 100000000
+run 8 100000000
+run 16 100000000
+run 32 100000000
 
-run_kdtree_all 100000
-run_kdtree_all 1000000
-run_kdtree_all 10000000
+# data for weak scaling
+run 1 10000000
+run 2 20000000
+run 4 40000000
+run 8 80000000
+run 16 160000000
+run 32 320000000
 
-# do the 10e8
-run_kdtree_high 100000000
-
-# last, do same thing for 10e9 but once
-make clean
-npts=1000000000
-make USER_CFLAGS="-DNPTS=$npts"
-mpirun -np 16 --map-by ppr:1:core --mca btl ^openib mpi_kdtree >> data/16_$npts
-mpirun -np 32 --map-by ppr:1:core --mca btl ^openib mpi_kdtree >> data/32_$npts

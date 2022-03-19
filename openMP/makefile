@@ -1,5 +1,5 @@
 CC = cc
-CFLAGS = -Wall -O3 -march=native -fopenmp -std=c11 -DNPTS=100000 -DDOUBLE_PRECISION
+CFLAGS = -Wall -O3 -march=native -fopenmp -std=c11 -DDOUBLE_PRECISION -DNDEBUG $(USER_CFLAGS)
 LDFLAGS = 
 
 SRC = omp_kdtree.c

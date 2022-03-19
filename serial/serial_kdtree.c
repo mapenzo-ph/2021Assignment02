@@ -8,7 +8,6 @@
 // ==================================================================
 //                      Input parameters
 // ==================================================================
-#define DATA "../test_data_e09.csv"
 #define NDIM 2
 #define SEP ','
 
@@ -89,25 +88,25 @@ kdnode_t *parseFile()
 }
 #endif
 
-kdnode_t *randomNodes()
-{
-    kdnode_t *tree = (kdnode_t*)malloc(NPTS*sizeof(kdnode_t));
-    #pragma omp parallel
-    {
-        int rank = omp_get_thread_num();
-        srand(rank*100);
+// kdnode_t *randomNodes()
+// {
+//     kdnode_t *tree = (kdnode_t*)malloc(NPTS*sizeof(kdnode_t));
+//     #pragma omp parallel
+//     {
+//         int rank = omp_get_thread_num();
+//         srand(rank*100);
 
-        #pragma omp for
-        for (int i = 0; i < NPTS; ++i)
-        {
-            for (int j = 0; j < NDIM; ++j)
-            {
-                (tree+i)->split[j] = rand()/((double)RAND_MAX)*100;
-            }
-        }
-    }
-    return tree;
-}
+//         #pragma omp for
+//         for (int i = 0; i < NPTS; ++i)
+//         {
+//             for (int j = 0; j < NDIM; ++j)
+//             {
+//                 (tree+i)->split[j] = rand()/((double)RAND_MAX)*100;
+//             }
+//         }
+//     }
+//     return tree;
+// }
 
 #ifndef NDEBUG
 void printTree(kdnode_t *tree)
@@ -184,16 +183,8 @@ int growTree(kdnode_t *tree, int start, int end, int axis)
     {
         (tree+n)->axis = axis;
         axis = (axis+1) % NDIM;
-
-        #pragma omp task
-        {
-            (tree+n)->left = growTree(tree, start, n, axis);
-        }
-        
-        #pragma omp task
-        {
-            (tree+n)->right = growTree(tree, n+1, end, axis);
-        }
+        (tree+n)->left = growTree(tree, start, n, axis);
+        (tree+n)->right = growTree(tree, n+1, end, axis);
     }
     return n;
 }
@@ -213,16 +204,8 @@ int main(int argc, char **argv)
 
     int root;
     double time = omp_get_wtime();
-
     // build tree
-    #pragma omp parallel
-    {
-        #pragma omp single
-        {
-            root = growTree(tree, 0, NPTS, 0);
-        }
-    }
-
+    root = growTree(tree, 0, NPTS, 0);
     time = omp_get_wtime() - time;
 
 #ifndef NDEBUG
