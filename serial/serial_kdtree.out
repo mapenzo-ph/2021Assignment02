@@ -1,0 +1,42 @@
+rm serial_kdtree serial_kdtree.out
+cc -Wall -O3 -march=native -fopenmp -std=c11 -DDOUBLE_PRECISION -DNDEBUG -DNPTS=10000  -o serial_kdtree serial_kdtree.c
+rm serial_kdtree serial_kdtree.out
+rm: cannot remove ‘serial_kdtree.out’: No such file or directory
+make: *** [clean] Error 1
+cc -Wall -O3 -march=native -fopenmp -std=c11 -DDOUBLE_PRECISION -DNDEBUG -DNPTS=20000  -o serial_kdtree serial_kdtree.c
+rm serial_kdtree serial_kdtree.out
+rm: cannot remove ‘serial_kdtree.out’: No such file or directory
+make: *** [clean] Error 1
+cc -Wall -O3 -march=native -fopenmp -std=c11 -DDOUBLE_PRECISION -DNDEBUG -DNPTS=40000  -o serial_kdtree serial_kdtree.c
+rm serial_kdtree serial_kdtree.out
+rm: cannot remove ‘serial_kdtree.out’: No such file or directory
+make: *** [clean] Error 1
+cc -Wall -O3 -march=native -fopenmp -std=c11 -DDOUBLE_PRECISION -DNDEBUG -DNPTS=60000  -o serial_kdtree serial_kdtree.c
+rm serial_kdtree serial_kdtree.out
+rm: cannot remove ‘serial_kdtree.out’: No such file or directory
+make: *** [clean] Error 1
+cc -Wall -O3 -march=native -fopenmp -std=c11 -DDOUBLE_PRECISION -DNDEBUG -DNPTS=80000  -o serial_kdtree serial_kdtree.c
+rm serial_kdtree serial_kdtree.out
+rm: cannot remove ‘serial_kdtree.out’: No such file or directory
+make: *** [clean] Error 1
+cc -Wall -O3 -march=native -fopenmp -std=c11 -DDOUBLE_PRECISION -DNDEBUG -DNPTS=100000  -o serial_kdtree serial_kdtree.c
+rm serial_kdtree serial_kdtree.out
+rm: cannot remove ‘serial_kdtree.out’: No such file or directory
+make: *** [clean] Error 1
+cc -Wall -O3 -march=native -fopenmp -std=c11 -DDOUBLE_PRECISION -DNDEBUG -DNPTS=200000  -o serial_kdtree serial_kdtree.c
+rm serial_kdtree serial_kdtree.out
+rm: cannot remove ‘serial_kdtree.out’: No such file or directory
+make: *** [clean] Error 1
+cc -Wall -O3 -march=native -fopenmp -std=c11 -DDOUBLE_PRECISION -DNDEBUG -DNPTS=400000  -o serial_kdtree serial_kdtree.c
+rm serial_kdtree serial_kdtree.out
+rm: cannot remove ‘serial_kdtree.out’: No such file or directory
+make: *** [clean] Error 1
+cc -Wall -O3 -march=native -fopenmp -std=c11 -DDOUBLE_PRECISION -DNDEBUG -DNPTS=600000  -o serial_kdtree serial_kdtree.c
+rm serial_kdtree serial_kdtree.out
+rm: cannot remove ‘serial_kdtree.out’: No such file or directory
+make: *** [clean] Error 1
+cc -Wall -O3 -march=native -fopenmp -std=c11 -DDOUBLE_PRECISION -DNDEBUG -DNPTS=800000  -o serial_kdtree serial_kdtree.c
+rm serial_kdtree serial_kdtree.out
+rm: cannot remove ‘serial_kdtree.out’: No such file or directory
+make: *** [clean] Error 1
+cc -Wall -O3 -march=native -fopenmp -std=c11 -DDOUBLE_PRECISION -DNDEBUG -DNPTS=200000000  -o serial_kdtree serial_kdtree.c

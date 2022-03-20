@@ -8,6 +8,7 @@
 // ==================================================================
 //                      Input parameters
 // ==================================================================
+#define DATA "../test_data_e09.csv"
 #define NDIM 2
 #define SEP ','
 
@@ -87,26 +88,6 @@ kdnode_t *parseFile()
     return tree;
 }
 #endif
-
-// kdnode_t *randomNodes()
-// {
-//     kdnode_t *tree = (kdnode_t*)malloc(NPTS*sizeof(kdnode_t));
-//     #pragma omp parallel
-//     {
-//         int rank = omp_get_thread_num();
-//         srand(rank*100);
-
-//         #pragma omp for
-//         for (int i = 0; i < NPTS; ++i)
-//         {
-//             for (int j = 0; j < NDIM; ++j)
-//             {
-//                 (tree+i)->split[j] = rand()/((double)RAND_MAX)*100;
-//             }
-//         }
-//     }
-//     return tree;
-// }
 
 #ifndef NDEBUG
 void printTree(kdnode_t *tree)
@@ -196,11 +177,8 @@ int main(int argc, char **argv)
 {
 
     // either read file or generate data
-#ifdef DATA
     kdnode_t *tree = parseFile();
-#else
-    kdnode_t *tree = randomNodes();
-#endif
+
 
     int root;
     double time = omp_get_wtime();

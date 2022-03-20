@@ -4,7 +4,7 @@
 #PBS -q dssc
 #PBS -l nodes=1:ppn=24
 #PBS -l walltime=05:00:00
-#PBS -o kdtree.out
+#PBS -o omp_kdtree.out
 #PBS -j oe
 
 cd ${PBS_O_WORKDIR}
