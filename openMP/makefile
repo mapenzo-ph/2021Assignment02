@@ -18,6 +18,10 @@ tables:
 
 strong:
 	python3 scripts/analysis_strong.py
+	python3 scripts/analysis_strong_v2.py
+
+weak:
+	python3 scripts/analysis_weak.py
 
 clean:
 	rm $(EXE) $(OUT)
