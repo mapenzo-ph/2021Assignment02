@@ -13,5 +13,11 @@ default:	$(EXE)
 %:	%.c
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $<
 
+tables:
+	./scripts/clean_data.sh
+
+strong:
+	python3 scripts/analysis_strong.py
+
 clean:
 	rm $(EXE)

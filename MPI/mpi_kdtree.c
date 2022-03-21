@@ -331,6 +331,7 @@ int main(int argc, char **argv)
         printf("Tree root is at node %d\n\n", root);
     }
 
+    free(tree);
     MPI_Finalize();
     return 0;
 }
