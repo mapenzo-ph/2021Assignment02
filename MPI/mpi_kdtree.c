@@ -7,7 +7,8 @@
 // ==================================================================
 //                      Input parameters
 // ==================================================================
-#define DATA "../test_data_e09.csv"
+#define DATA "../test_data.csv"
+#define NPTS 50
 #define NDIM 2
 #define SEP ','
 

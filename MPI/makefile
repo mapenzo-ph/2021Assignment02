@@ -1,5 +1,5 @@
 CC = mpicc
-CFLAGS = -Wall -O3 -march=native -std=c11 -DDOUBLE_PRECISION -DNDEBUG $(USER_CFLAGS)
+CFLAGS = -Wall -O3 -march=native -std=c11 -DDOUBLE_PRECISION
 LDFLAGS = 
 
 SRC = mpi_kdtree.c

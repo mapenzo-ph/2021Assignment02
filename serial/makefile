@@ -1,5 +1,5 @@
 CC = cc
-CFLAGS = -Wall -O3 -march=native -fopenmp -std=c11 -DDOUBLE_PRECISION -DNDEBUG $(USER_CFLAGS)
+CFLAGS = -Wall -O3 -march=native -fopenmp -std=c11 -DDOUBLE_PRECISION
 LDFLAGS = 
 
 SRC = serial_kdtree.c
